@@ -53,7 +53,19 @@
   <concurrentBuild>false</concurrentBuild>
   <builders>
     <hudson.tasks.Shell>
-      <command>infrastructure/create-new-jenkins.sh</command>
+      <command>#!/bin/bash -e
+
+export stack_name="Jenkins-`date +%Y%m%d%H%M%S`"
+wget https://raw.githubusercontent.com/stelligent/jenkins_cookbooks/master/jenkins.template
+
+aws cloudformation create-stack --stack-name $stack_name --template-body "`cat jenkins.template`" --region ${region}  --disable-rollback --capabilities="CAPABILITY_IAM" --parameters ParameterKey=domain,ParameterValue="${domain}" ParameterKey=adminEmailAddress,ParameterValue="jonny@stelligent.com"
+
+gem install aws-sdk-core --pre
+gem install trollop 
+
+ruby infrastructure/bin/monitor_stack.rb  --stack $stack_name --region ${region}
+
+echo "$stack_name created."</command>
     </hudson.tasks.Shell>
   </builders>
   <publishers/>
