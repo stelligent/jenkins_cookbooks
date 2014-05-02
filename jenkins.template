@@ -4,21 +4,28 @@
     "Parameters" : {
       "repository" : {
         "Type" : "String",
-        "Default" : "https://github.com/stelligent/honolulu_answers.git",
         "Description" : "The github repository where you code is stored. Note: this repoistory must be public."
       },
       "branch" : {
         "Type" : "String",
-        "Default" : "master",
         "Description" : "The git branch of the repository you'd like Jenkins to be configured to look at."
       },
       "domain" : {
         "Type" : "String",
-        "Description" : "The Route 53 Hosted Zone to look for resource records. For example, if you want the Jenkins server to populate 'appdemo.stelligent.com', the entry for this field should be 'stelligent.com'"
+        "Description" : "The Route 53 Hosted Zone to look for resource records. For example, if you want the Jenkins server to live at 'jenkins.stelligent.com', the entry for this field should be 'stelligent.com'"
+      },
+      "subdomain" : {
+        "Type" : "String",
+        "Description" : "The Route 53 Resource Record (aka the subdomain) of the Jenkins server. For example, if you want the Jenkins server to populate 'jenkins.stelligent.com', the entry for this field should be 'jenkins'"
       },
       "adminEmailAddress" : {
         "Type" : "String",
         "Description" : "The address that Jenkins failure notices should come from."
+      },
+      "rubyVersion" : {
+        "Type" : "String",
+        "Description" : "The version of Ruby that the Jenkins server should use when it runs jobs.",
+        "Default" : "1.9.3"
       }
 
     },
@@ -27,28 +34,19 @@
         "JenkinsSdbDomain": {
           "Type" : "AWS::SDB::Domain"
         },
-        "jenkinsstack": {
+        "JenkinsEmailUser" : {
+          "Type" : "AWS::IAM::User"
+        },
+        "JenkinsOpsWorksStack": {
             "Type": "AWS::OpsWorks::Stack",
             "Properties": {
                 "ConfigurationManager" : {
                   "Name" : "Chef",
                   "Version" : "11.10"
                 },
-                "Name": {
-                    "Ref": "AWS::StackName"
-                },
-                "ServiceRoleArn": {
-                    "Fn::GetAtt": [
-                        "OpsWorksServiceRole",
-                        "Arn"
-                    ]
-                },
-                "DefaultInstanceProfileArn": {
-                    "Fn::GetAtt": [
-                        "OpsWorksInstanceProfile",
-                        "Arn"
-                    ]
-                },
+                "Name": { "Ref": "AWS::StackName" },
+                "ServiceRoleArn": { "Fn::GetAtt": [ "JenkinsOpsWorksServiceRole", "Arn" ] },
+                "DefaultInstanceProfileArn": { "Fn::GetAtt": [ "JenkinsOpsWorksInstanceProfile", "Arn" ] },
                 "CustomJson": { 
                       "rvm": {
                           "user_installs": [
@@ -81,10 +79,11 @@
                           },
                         "users" : [ [ "admin","admin","admin" ] ],
                         "email" : {
-                          "username" : { "Ref": "EmailUserKeys" },
-                          "secret_key" : { "Fn::GetAtt": [ "EmailUserKeys", "SecretAccessKey" ] },
+                          "username" : { "Ref": "JenkinsEmailUserKeys" },
+                          "secret_key" : { "Fn::GetAtt": [ "JenkinsEmailUserKeys", "SecretAccessKey" ] },
                           "admin_email_address" : { "Ref" : "adminEmailAddress"}
-                        }
+                        },
+                        "rubyVersion" : { "Ref" : "rubyVersion"}
                       },
 
                       "jenkins": {
@@ -156,11 +155,11 @@
                 }
             }
         },
-        "jenkinslayer": {
+        "JenkinsOpsWorksLayer": {
             "Type": "AWS::OpsWorks::Layer",
             "Properties": {
                 "StackId": {
-                    "Ref": "jenkinsstack"
+                    "Ref": "JenkinsOpsWorksStack"
                 },
                 "Name": "Jenkins Server Layer",
                 "Type": "custom",
@@ -185,15 +184,15 @@
                 }
             }
         },
-        "jenkins": {
+        "JenkinsOpsWorksInstance": {
             "Type": "AWS::OpsWorks::Instance",
             "Properties": {
                 "StackId": {
-                    "Ref": "jenkinsstack"
+                    "Ref": "JenkinsOpsWorksStack"
                 },
                 "LayerIds": [
                     {
-                        "Ref": "jenkinslayer"
+                        "Ref": "JenkinsOpsWorksLayer"
                     }
                 ],
                 "InstallUpdatesOnBoot": true,
@@ -204,7 +203,7 @@
                 "SshKeyName" : "jonny-labs-eu"
             }
         },
-        "OpsWorksServiceRole": {
+        "JenkinsOpsWorksServiceRole": {
             "Type": "AWS::IAM::Role",
             "Properties": {
                 "AssumeRolePolicyDocument": {
@@ -239,7 +238,7 @@
                 ]
             }
         },
-        "OpsWorksInstanceRole": {
+        "JenkinsOpsWorksInstanceRole": {
             "Type": "AWS::IAM::Role",
             "Properties": {
                 "AssumeRolePolicyDocument": {
@@ -275,21 +274,18 @@
 
             }
         },
-        "OpsWorksInstanceProfile": {
+        "JenkinsOpsWorksInstanceProfile": {
             "Type": "AWS::IAM::InstanceProfile",
             "Properties": {
                 "Path": "/",
                 "Roles": [
                     {
-                        "Ref": "OpsWorksInstanceRole"
+                        "Ref": "JenkinsOpsWorksInstanceRole"
                     }
                 ]
             }
         },
-        "EmailUser" : {
-          "Type" : "AWS::IAM::User"
-        },
-        "EmailUserPolicy" : {
+        "JenkinsEmailUserPolicy" : {
           "Type" : "AWS::IAM::Policy",
           "Properties" : {
             "PolicyName" : "EmailUser",
@@ -300,21 +296,16 @@
                 "Resource": "*"
               }]
             },
-            "Users" : [{ "Ref" : "EmailUser" }]
+            "Users" : [{ "Ref" : "JenkinsEmailUser" }]
           }
         },
-         "EmailUserKeys": {
+        "JenkinsEmailUserKeys": {
             "Type": "AWS::IAM::AccessKey",
             "Properties": {
-                "UserName": { "Ref": "EmailUser" }
+                "UserName": { "Ref": "JenkinsEmailUser" }
             }
         }
     },
     "Outputs": {
-        "StackId": {
-            "Value": {
-                "Ref": "jenkinsstack"
-            }
-        }
     }
 }
